@@ -129,6 +129,9 @@ null :: SortedList a -> Bool
 null = List.null . fromSortedList
 #endif
 
+empty :: Ord a => SortedList a
+empty = toSortedList []
+
 -- | /O(1)/. Decompose a sorted list into its minimal element and the rest.
 --   If the list is empty, it returns 'Nothing'.
 uncons :: SortedList a -> Maybe (a, SortedList a)
@@ -434,12 +437,12 @@ union xs ys = xs `mappend` foldl (flip delete) (nub ys) xs
 (SortedList xs) \\ (SortedList ys) = SortedList $ go xs ys
   where
     go [] _ = []
-    go xs [] = xs
-    go xxs@(x:xs) yys@(y:ys) =
-      case x `compare` y of
-        LT -> x : xs `go` yys
-        EQ -> xs `go` ys
-        GT -> xxs `go` ys
+    go ps [] = ps
+    go pps@(p:ps) qqs@(q:qs) =
+      case p `compare` q of
+        LT -> p : ps `go` qqs
+        EQ -> ps `go` qs
+        GT -> pps `go` qs
 
 difference :: Ord a => SortedList a -> SortedList a -> SortedList a
 difference = (\\)
