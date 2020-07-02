@@ -1,16 +1,23 @@
-
-{-# LANGUAGE CPP, TypeFamilies #-}
+{-# LANGUAGE CPP             #-}
+{-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE TypeFamilies    #-}
+{-# LANGUAGE ViewPatterns    #-}
 
 -- | This module defines a type for sorted lists, together
 --   with several functions to create and use values of that
 --   type. Many operations are optimized to take advantage
 --   of the list being sorted.
-module Data.SortedList (
+module Data.SortedList
+  (
     -- * Type
     SortedList
     -- * List conversions
   , toSortedList
   , fromSortedList
+  , unsafeToSortedList
+  , pattern Empty
+  , pattern (:<:)
+
     -- * Construction
   , singleton
   , repeat
@@ -44,6 +51,7 @@ module Data.SortedList (
   , findIndices
     -- * @map@ function
   , map
+  , monoMap
   , mapDec
     -- * Unfolding
   , unfoldr
@@ -55,39 +63,34 @@ module Data.SortedList (
   , nub
   , intersect
   , union
+  , difference, (\\)
   ) where
 
-import Prelude hiding
-  ( take, drop, splitAt, filter
-  , repeat, replicate, iterate
-  , null, map, reverse
-  , span, takeWhile, dropWhile
-#if !MIN_VERSION_base(4,8,0)
-  , foldr, foldl
-#endif
-    )
-import qualified Data.List as List
-import Control.DeepSeq (NFData (..))
-import Data.Foldable (Foldable (..))
+import           Control.DeepSeq (NFData (..))
+import           Data.Foldable   (Foldable (..))
+import qualified Data.List       as List
+import           Prelude         hiding (drop, dropWhile, filter, foldl, foldr,
+                                  iterate, map, null, repeat, replicate,
+                                  reverse, span, splitAt, take, takeWhile)
 --
 #if MIN_VERSION_base(4,5,0) && !MIN_VERSION_base(4,9,0)
-import Data.Monoid ((<>))
+import           Data.Monoid     ((<>))
 #endif
 --
 #if MIN_VERSION_base(4,6,0)
-import Data.Ord (Down (..))
+import           Data.Ord        (Down (..))
 #endif
 --
 #if MIN_VERSION_base(4,7,0)
-import qualified GHC.Exts as Exts
+import qualified GHC.Exts        as Exts
 #endif
 --
 #if !MIN_VERSION_base(4,8,0)
-import Data.Monoid (Monoid (..))
+import           Data.Monoid     (Monoid (..))
 #endif
 --
 #if MIN_VERSION_base(4,9,0)
-import Data.Semigroup (Semigroup (..))
+import           Data.Semigroup  (Semigroup (..))
 #endif
 
 -- | Type of sorted lists. Any (non-bottom) value of this type
@@ -109,6 +112,14 @@ instance Ord a => Exts.IsList (SortedList a) where
   toList = fromSortedList
 #endif
 
+
+pattern Empty :: SortedList a
+pattern Empty <- (uncons -> Nothing)
+
+pattern (:<:) :: a -> SortedList a -> SortedList a
+pattern x :<: xs <- (uncons -> Just (x, xs))
+
+
 #if !MIN_VERSION_base(4,8,0)
 -- | Check if a sorted list is empty.
 --
@@ -121,8 +132,12 @@ null = List.null . fromSortedList
 -- | /O(1)/. Decompose a sorted list into its minimal element and the rest.
 --   If the list is empty, it returns 'Nothing'.
 uncons :: SortedList a -> Maybe (a, SortedList a)
-uncons (SortedList []) = Nothing
+uncons (SortedList [])     = Nothing
 uncons (SortedList (x:xs)) = Just (x, SortedList xs)
+
+-- | Create a 'SortedList'.
+unsafeToSortedList :: [a] -> SortedList a
+unsafeToSortedList = SortedList
 
 -- | Create a 'SortedList' by sorting a regular list.
 toSortedList :: Ord a => [a] -> SortedList a
@@ -185,7 +200,7 @@ unfoldr f e = SortedList $
            else Nothing
   in  case f e of
         Just (x0,e') -> x0 : List.unfoldr g (x0,e')
-        _ -> []
+        _            -> []
 
 -- | Create a sorted list by repeatedly applying the same
 --   function to an element, until the image by that function
@@ -251,28 +266,28 @@ filterLT :: Ord a => a -> SortedList a -> SortedList a
 filterLT a (SortedList l) = SortedList $ go l
   where
     go (x:xs) = if x < a then x : go xs else []
-    go [] = []
+    go []     = []
 
 -- | /O(n)/. Select only elements that are strictly greater than the argument.
 filterGT :: Ord a => a -> SortedList a -> SortedList a
 filterGT a (SortedList l) = SortedList $ go l
   where
     go (x:xs) = if a < x then x : xs else go xs
-    go [] = []
+    go []     = []
 
 -- | /O(n)/. Select only elements less or equal to the argument.
 filterLE :: Ord a => a -> SortedList a -> SortedList a
 filterLE a (SortedList l) = SortedList $ go l
   where
     go (x:xs) = if x <= a then x : go xs else []
-    go [] = []
+    go []     = []
 
 -- | /O(n)/. Select only elements greater or equal to the argument.
 filterGE :: Ord a => a -> SortedList a -> SortedList a
 filterGE a (SortedList l) = SortedList $ go l
   where
     go (x:xs) = if a <= x then x : xs else go xs
-    go [] = []
+    go []     = []
 
 -- | /O(n)/. An efficient implementation of 'elem', using the 'Ord'
 --   instance of the elements in a sorted list. It only traverses
@@ -293,7 +308,7 @@ nub :: Eq a => SortedList a -> SortedList a
 nub (SortedList l) = SortedList $ go l
   where
     go (x:y:xs) = if x == y then go (x:xs) else x : go (y:xs)
-    go xs = xs
+    go xs       = xs
 
 instance Foldable SortedList where
   {-# INLINE foldr #-}
@@ -304,11 +319,11 @@ instance Foldable SortedList where
   minimum (SortedList xs) =
     case xs of
       x : _ -> x
-      _ -> error "SortedList.minimum: empty list"
+      _     -> error "SortedList.minimum: empty list"
   maximum (SortedList xs) =
     case xs of
       [] -> error "SortedList.maximum: empty list"
-      _ -> last xs
+      _  -> last xs
 #endif
 
 -- | Map a function over all the elements of a sorted list.
@@ -334,6 +349,9 @@ map f = foldr (insert . f) mempty
 mapDec :: Ord b => (a -> b) -> SortedList a -> SortedList b
 {-# INLINE[1] mapDec #-}
 mapDec f = foldl (\xs x -> insert (f x) xs) mempty
+
+monoMap :: (a -> b) -> SortedList a -> SortedList b
+monoMap f (SortedList xs) = SortedList $ fmap f xs
 
 {-# RULES
 "SortedList:map/map" forall f g xs. map f (map g xs) = map (f . g) xs
@@ -411,3 +429,18 @@ intersect xs ys =
 --   but if the first list contains duplicates, so will the result.
 union :: Ord a => SortedList a -> SortedList a -> SortedList a
 union xs ys = xs `mappend` foldl (flip delete) (nub ys) xs
+
+(\\) :: Ord a => SortedList a -> SortedList a -> SortedList a
+(SortedList xs) \\ (SortedList ys) = SortedList $ go xs ys
+  where
+    go [] _ = []
+    go xs [] = xs
+    go xxs@(x:xs) yys@(y:ys) =
+      case x `compare` y of
+        LT -> x : xs `go` yys
+        EQ -> xs `go` ys
+        GT -> xxs `go` ys
+
+difference :: Ord a => SortedList a -> SortedList a -> SortedList a
+difference = (\\)
+
