@@ -15,16 +15,17 @@ module Data.SortedList
   , toSortedList
   , fromSortedList
   , unsafeToSortedList
-  , pattern Empty
-  , pattern (:<:)
 
     -- * Construction
+  , empty
   , singleton
   , repeat
   , replicate
   , iterate
     -- * Deconstruction
   , uncons
+  , pattern Empty
+  , pattern (:<:)
     -- * Inserting
   , insert
     -- * Deleting
@@ -51,8 +52,9 @@ module Data.SortedList
   , findIndices
     -- * @map@ function
   , map
-  , monoMap
   , mapDec
+  , lazyMapDec
+  , unsafeMap
     -- * Unfolding
   , unfoldr
     -- * Others
@@ -344,17 +346,21 @@ instance Foldable SortedList where
 --   and worst case scenarios. We provide an alternative ('mapDec') where monotonically
 --   decreasing functions are the best case scenario.
 map :: Ord b => (a -> b) -> SortedList a -> SortedList b
-{-# INLINE[1] map #-}
 map f = foldr (insert . f) mempty
+{-# INLINE[1] map #-}
 
 -- | Just like 'map', but favoring functions that are monotonically decreasing instead
 --   of those that are monotonically increasing.
 mapDec :: Ord b => (a -> b) -> SortedList a -> SortedList b
+mapDec f = foldl' (\xs x -> insert (f x) xs) mempty
 {-# INLINE[1] mapDec #-}
-mapDec f = foldl (\xs x -> insert (f x) xs) mempty
 
-monoMap :: (a -> b) -> SortedList a -> SortedList b
-monoMap f (SortedList xs) = SortedList $ fmap f xs
+unsafeMap :: (a -> b) -> SortedList a -> SortedList b
+unsafeMap f (SortedList xs) = SortedList $ fmap f xs
+
+lazyMapDec :: Ord b => (a -> b) -> SortedList a -> SortedList b
+lazyMapDec f = foldl (\xs x -> insert (f x) xs) mempty
+{-# INLINE[1] lazyMapDec #-}
 
 {-# RULES
 "SortedList:map/map" forall f g xs. map f (map g xs) = map (f . g) xs
